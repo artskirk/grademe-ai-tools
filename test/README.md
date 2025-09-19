@@ -9,7 +9,7 @@ This directory contains comprehensive testing tools for the GrademeAI Telegram B
 - **Features**:
   - Sends real Telegram webhook requests to the bot
   - Monitors logs in real-time for processing validation
-  - Tests conversation memory, Claude API, and context processing
+  - Tests conversation memory, AI API, and context processing
   - Uses native Node.js HTTP (no external dependencies)
   - Validates message flow from webhook to response
 
@@ -112,7 +112,7 @@ The test validates the following components:
 - Memory size management (5MB limit)
 - Enhanced context formatting with boundaries
 
-### ✅ Claude API Integration
+### ✅ AI API Integration
 - SDK request with timeout protection (30s)
 - Response reception and processing
 - Error handling and logging
@@ -152,7 +152,7 @@ The test validates the following components:
 - One or more critical components failing
 - Check detailed logs for specific issues
 - Common issues:
-  - Claude API timeouts
+  - AI API timeouts
   - Database connection problems
   - Webhook routing failures
 
@@ -167,8 +167,8 @@ The test validates the following components:
 The test monitors the following log patterns:
 - `Retrieved conversation memory for user`
 - `Using context for user`
-- `Claude SDK request`
-- `Claude SDK response received`
+- `AI SDK request`
+- `AI SDK response received`
 - `Context validation for user`
 - `Queue message id X was resolved`
 
@@ -183,7 +183,7 @@ This test suite is designed to work with:
 ## Recent Improvements (September 2025)
 
 1. **Enhanced Context Processing**: 2-hour memory window with structured formatting
-2. **Claude API Timeout Protection**: 30-second timeout to prevent hanging
+2. **AI API Timeout Protection**: 30-second timeout to prevent hanging
 3. **Language-Aware Instructions**: Automatic Russian/English detection
 4. **Context Validation**: Real-time monitoring of AI context adherence
 5. **Comprehensive Test Coverage**: End-to-end validation of all major components

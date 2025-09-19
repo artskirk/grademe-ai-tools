@@ -288,7 +288,7 @@ const detectContextLeakage = async (contextInfo, waitTime = 3000) => {
         // Wait a bit for logs to be written
         await new Promise(resolve => setTimeout(resolve, waitTime));
 
-        const { stdout } = await execAsync(`tail -20 ${LOG_PATH} | grep -E "(Claude SDK response)" | tail -2`);
+        const { stdout } = await execAsync(`tail -20 ${LOG_PATH} | grep -E "(AI SDK response)" | tail -2`);
 
         // We can't directly see the AI response content in logs, but we can check
         // if memory was used when it shouldn't have been

@@ -152,8 +152,8 @@ const monitorLogs = async (messageId, timeoutMs = 60000) => {
         messageReceived: new RegExp(`"message_id":${messageId}`),
         conversationMemory: /Retrieved conversation memory for user/,
         contextUsage: /Using context for user/,
-        claudeRequest: /Claude SDK request/,
-        claudeResponse: /Claude SDK response received/,
+        aiRequest: /AI SDK request/,
+        aiResponse: /AI SDK response received/,
         contextValidation: /Context validation for user/,
         queueResolved: new RegExp(`Queue message id ${messageId} was resolved`),
         error: /"level":"error"/
@@ -163,8 +163,8 @@ const monitorLogs = async (messageId, timeoutMs = 60000) => {
         messageReceived: false,
         conversationMemory: false,
         contextUsage: false,
-        claudeRequest: false,
-        claudeResponse: false,
+        aiRequest: false,
+        aiResponse: false,
         contextValidation: false,
         queueResolved: false,
         errors: []
@@ -206,14 +206,14 @@ const monitorLogs = async (messageId, timeoutMs = 60000) => {
                     logSuccess('✓ Context processing active');
                 }
 
-                if (logPatterns.claudeRequest.test(line)) {
-                    results.claudeRequest = true;
-                    logSuccess('✓ Claude SDK request sent');
+                if (logPatterns.aiRequest.test(line)) {
+                    results.aiRequest = true;
+                    logSuccess('✓ AI SDK request sent');
                 }
 
-                if (logPatterns.claudeResponse.test(line)) {
-                    results.claudeResponse = true;
-                    logSuccess('✓ Claude SDK response received');
+                if (logPatterns.aiResponse.test(line)) {
+                    results.aiResponse = true;
+                    logSuccess('✓ AI SDK response received');
                 }
 
                 if (logPatterns.contextValidation.test(line)) {
@@ -270,7 +270,7 @@ const runTelegramUITest = async () => {
     let testResults = {
         webhookSuccess: false,
         messageProcessed: false,
-        claudeResponseReceived: false,
+        aiResponseReceived: false,
         contextProcessingWorking: false,
         noErrors: true,
         overallSuccess: false
@@ -310,13 +310,13 @@ const runTelegramUITest = async () => {
             if (!logResults.queueResolved) logError('- Message queue not resolved');
         }
 
-        if (logResults.claudeRequest && logResults.claudeResponse) {
-            testResults.claudeResponseReceived = true;
-            logSuccess('Claude API integration: PASS');
+        if (logResults.aiRequest && logResults.aiResponse) {
+            testResults.aiResponseReceived = true;
+            logSuccess('AI API integration: PASS');
         } else {
-            logError('Claude API integration: FAIL');
-            if (!logResults.claudeRequest) logError('- No Claude SDK request logged');
-            if (!logResults.claudeResponse) logError('- No Claude SDK response received');
+            logError('AI API integration: FAIL');
+            if (!logResults.aiRequest) logError('- No AI SDK request logged');
+            if (!logResults.aiResponse) logError('- No AI SDK response received');
         }
 
         if (logResults.conversationMemory && logResults.contextUsage) {
@@ -338,7 +338,7 @@ const runTelegramUITest = async () => {
         const criticalTests = [
             testResults.webhookSuccess,
             testResults.messageProcessed,
-            testResults.claudeResponseReceived
+            testResults.aiResponseReceived
         ];
 
         testResults.overallSuccess = criticalTests.every(test => test === true) && testResults.noErrors;
@@ -360,7 +360,7 @@ const runTelegramUITest = async () => {
     console.log('\nDetailed Results:');
     console.log(`├─ Webhook Success: ${testResults.webhookSuccess ? '✅' : '❌'}`);
     console.log(`├─ Message Processed: ${testResults.messageProcessed ? '✅' : '❌'}`);
-    console.log(`├─ Claude Response: ${testResults.claudeResponseReceived ? '✅' : '❌'}`);
+    console.log(`├─ AI Response: ${testResults.aiResponseReceived ? '✅' : '❌'}`);
     console.log(`├─ Context Processing: ${testResults.contextProcessingWorking ? '✅' : '⚠️'}`);
     console.log(`└─ No Errors: ${testResults.noErrors ? '✅' : '❌'}`);
 
