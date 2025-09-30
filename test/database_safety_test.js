@@ -37,10 +37,40 @@ const logWarning = (message) => log(`⚠️  ${message}`, colors.yellow);
 const logInfo = (message) => log(`ℹ️  ${message}`, colors.blue);
 const logStep = (message) => log(`🔄 ${message}`, colors.magenta);
 
-// Database operations
+// Load MongoDB credentials from application .env file
+const loadMongoCredentials = () => {
+    try {
+        const fs = require('fs');
+        const envFile = '/var/www/html/grademe_api/ai/bot/telegram/.env';
+        const envContent = fs.readFileSync(envFile, 'utf8');
+
+        const getEnvValue = (key) => {
+            const match = envContent.match(new RegExp(`^${key}=(.*)$`, 'm'));
+            return match ? match[1] : '';
+        };
+
+        return {
+            username: getEnvValue('DB_USERNAME'),
+            password: getEnvValue('DB_PASSWORD'),
+            adminUsername: getEnvValue('DB_ADMIN_USERNAME'),
+            adminPassword: getEnvValue('DB_ADMIN_PASSWORD')
+        };
+    } catch (error) {
+        logError(`Failed to load MongoDB credentials: ${error.message}`);
+        return null;
+    }
+};
+
+const dbCredentials = loadMongoCredentials();
+if (!dbCredentials) {
+    logError('Cannot proceed without MongoDB credentials');
+    process.exit(1);
+}
+
+// Database operations with authentication
 const mongoExec = async (command) => {
     try {
-        const mongoCommand = `docker exec mongo mongosh grademe_db --quiet --eval "${command.replace(/"/g, '\\"')}"`;
+        const mongoCommand = `docker exec mongo mongosh grademe_db -u "${dbCredentials.username}" -p "${dbCredentials.password}" --quiet --eval "${command.replace(/"/g, '\\"')}"`;
         const { stdout } = await execAsync(mongoCommand);
         return stdout.trim();
     } catch (error) {
@@ -91,16 +121,18 @@ const testWebhookProcessing = async () => {
 
     logInfo(`Baseline: Users=${beforeCounts.users}, Collections=${beforeCounts.collections}`);
 
-    // Test multiple user operations
+    // Test multiple user operations including existing user scenario
     const testUsers = [
         { id: 111111, username: 'test_safety_1', firstName: 'SafetyTest1' },
         { id: 222222, username: 'test_safety_2', firstName: 'SafetyTest2' },
-        { id: 333333, username: 'test_safety_3', firstName: 'SafetyTest3' }
+        { id: 333333, username: 'test_safety_3', firstName: 'SafetyTest3' },
+        // Test the exact scenario that caused the akirkor database wipe
+        { id: 830403309, username: 'akirkor_test', firstName: 'ArtemTest' }
     ];
 
     for (let i = 0; i < testUsers.length; i++) {
         const user = testUsers[i];
-        logStep(`Testing user operation ${i + 1}/3: ${user.username}`);
+        logStep(`Testing user operation ${i + 1}/4: ${user.username}`);
 
         // Simulate webhook message
         const webhookData = {
@@ -152,7 +184,7 @@ const testWebhookProcessing = async () => {
     return true;
 };
 
-// Test for the specific createIndex bug
+// Test for the specific createIndex bug and control flow bug
 const testCreateIndexBug = async () => {
     logStep('Checking for dangerous createIndex calls in User.js...');
 
@@ -166,16 +198,31 @@ const testCreateIndexBug = async () => {
 
     if (grepResult.includes('REMOVED DANGEROUS')) {
         logSuccess('createIndex bug has been properly fixed');
-        return true;
-    }
-
-    if (grepResult.includes('No createIndex found')) {
+    } else if (grepResult.includes('No createIndex found')) {
         logSuccess('No createIndex calls found in User.js');
-        return true;
+    } else {
+        logWarning(`Unclear result: ${grepResult}`);
     }
 
-    logWarning(`Unclear result: ${grepResult}`);
-    return true;
+    // NEW: Test for the control flow bug that causes duplicate user creation
+    logStep('Checking for control flow bug in user update failure handling...');
+
+    try {
+        const { stdout } = await execAsync('grep -A20 -B2 "Failed to update user" /mnt/volume-nbg1-1/grademe_api/ai/bot/telegram/src/db/User.js');
+
+        if (stdout.includes('return response') && stdout.includes('CRITICAL FIX')) {
+            logSuccess('Control flow bug fix detected: early return after update failure');
+            return true;
+        } else {
+            logError('CRITICAL: Control flow bug still exists - missing early return after update failure!');
+            logError('This causes duplicate user creation when updates fail');
+            logError(`Debug: Found in code: ${stdout.substring(0, 200)}...`);
+            return false;
+        }
+    } catch (error) {
+        logError(`Error checking control flow fix: ${error.message}`);
+        return false;
+    }
 };
 
 // Test MongoDB index status
@@ -210,7 +257,9 @@ const testIndexStatus = async () => {
 // Main test function
 const runDatabaseSafetyTest = async () => {
     logSection('DATABASE SAFETY TEST - Critical Bug Prevention');
-    logInfo('Testing for the User.js createIndex bug that caused database wipes');
+    logInfo('Testing for critical bugs in User.js that cause database wipes:');
+    logInfo('1. createIndex bug (fixed) - dangerous index creation on every query');
+    logInfo('2. Control flow bug (new fix) - duplicate user creation on update failure');
     logInfo('This test validates database stability during user operations');
     console.log('');
 

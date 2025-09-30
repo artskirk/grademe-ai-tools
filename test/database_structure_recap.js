@@ -35,7 +35,37 @@ const logError = (message) => log(`❌ ${message}`, colors.red);
 const logWarning = (message) => log(`⚠️  ${message}`, colors.yellow);
 const logInfo = (message) => log(`ℹ️  ${message}`, colors.blue);
 
-// Execute MongoDB command with proper escaping
+// Load MongoDB credentials from application .env file
+const loadMongoCredentials = () => {
+    try {
+        const fs = require('fs');
+        const envFile = '/var/www/html/grademe_api/ai/bot/telegram/.env';
+        const envContent = fs.readFileSync(envFile, 'utf8');
+
+        const getEnvValue = (key) => {
+            const match = envContent.match(new RegExp(`^${key}=(.*)$`, 'm'));
+            return match ? match[1] : '';
+        };
+
+        return {
+            username: getEnvValue('DB_USERNAME'),
+            password: getEnvValue('DB_PASSWORD'),
+            adminUsername: getEnvValue('DB_ADMIN_USERNAME'),
+            adminPassword: getEnvValue('DB_ADMIN_PASSWORD')
+        };
+    } catch (error) {
+        logError(`Failed to load MongoDB credentials: ${error.message}`);
+        return null;
+    }
+};
+
+const dbCredentials = loadMongoCredentials();
+if (!dbCredentials) {
+    logError('Cannot proceed without MongoDB credentials');
+    process.exit(1);
+}
+
+// Execute MongoDB command with proper escaping and authentication
 const mongoExec = async (command) => {
     try {
         // Check if we're running inside Docker container or on host
@@ -50,11 +80,11 @@ const mongoExec = async (command) => {
 
         let mongoCommand;
         if (isInContainer) {
-            // Running inside container - connect directly to MongoDB
-            mongoCommand = `mongosh grademe_db --quiet --eval "${escapedCommand}"`;
+            // Running inside container - connect directly to MongoDB with authentication
+            mongoCommand = `mongosh grademe_db -u "${dbCredentials.username}" -p "${dbCredentials.password}" --quiet --eval "${escapedCommand}"`;
         } else {
-            // Running on host - use docker exec
-            mongoCommand = `docker exec mongo mongosh grademe_db --quiet --eval "${escapedCommand}"`;
+            // Running on host - use docker exec with authentication
+            mongoCommand = `docker exec mongo mongosh grademe_db -u "${dbCredentials.username}" -p "${dbCredentials.password}" --quiet --eval "${escapedCommand}"`;
         }
 
         const { stdout } = await execAsync(mongoCommand);
@@ -199,7 +229,7 @@ const generateDatabaseRecap = async () => {
     try {
         const ping = await mongoExec('JSON.stringify(db.adminCommand({ping: 1}))');
         if (ping && JSON.parse(ping).ok === 1) {
-            logSuccess('MongoDB connection active');
+            logSuccess('MongoDB connection active (authenticated)');
         } else {
             logError('MongoDB connection failed');
             return;
