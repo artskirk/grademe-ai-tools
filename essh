@@ -1,0 +1,63 @@
+#!/bin/bash
+
+# essh - SSH wrapper tool for managing testing servers
+# Usage: essh <host> -e '<command>'
+
+set -euo pipefail
+
+# Configuration
+SSH_USER="root"
+SSH_PORT="22"
+SSH_KEY="/home/akirkor/.ssh/id_rsa"
+SSH_PASSPHRASE="20111989"
+
+# Parse arguments
+if [ $# -lt 3 ]; then
+    echo "Usage: essh <host> -e '<command>'" >&2
+    exit 1
+fi
+
+HOST="$1"
+shift
+
+if [ "$1" != "-e" ]; then
+    echo "Error: Expected -e flag" >&2
+    echo "Usage: essh <host> -e '<command>'" >&2
+    exit 1
+fi
+shift
+
+COMMAND="$*"
+
+# Start ssh-agent if not running
+if [ -z "${SSH_AUTH_SOCK:-}" ]; then
+    eval "$(ssh-agent -s)"
+fi
+
+# Add SSH key with passphrase using SSH_ASKPASS
+if ! ssh-add -l 2>/dev/null | grep -q "$SSH_KEY"; then
+    # Create a temporary askpass script
+    ASKPASS_SCRIPT=$(mktemp)
+    cat > "$ASKPASS_SCRIPT" << 'ASKPASS_EOF'
+#!/bin/bash
+echo "20111989"
+ASKPASS_EOF
+    chmod +x "$ASKPASS_SCRIPT"
+
+    # Add the key using SSH_ASKPASS
+    DISPLAY=:0 SSH_ASKPASS="$ASKPASS_SCRIPT" ssh-add "$SSH_KEY" < /dev/null
+
+    # Clean up
+    rm -f "$ASKPASS_SCRIPT"
+fi
+
+# List added keys
+ssh-add -l
+
+# Set MTU for eth0 (if sudo is available without password)
+if sudo -n ip link set dev eth0 mtu 1400 2>/dev/null; then
+    :
+fi
+
+# Execute the command
+ssh -p "$SSH_PORT" root@$HOST "$COMMAND"
