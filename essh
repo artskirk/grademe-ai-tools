@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # essh - SSH wrapper tool for managing testing servers
-# Usage: essh <host> -e '<command>'
+# Usage: essh <host> -e '<command>' [-p password]
 
 set -euo pipefail
 
@@ -11,9 +11,13 @@ SSH_PORT="22"
 SSH_KEY="/home/akirkor/.ssh/id_rsa"
 SSH_PASSPHRASE="20111989"
 
+# Host-specific configurations
+declare -A HOST_PASSWORDS
+HOST_PASSWORDS["10.60.1.122"]="datto"
+
 # Parse arguments
 if [ $# -lt 3 ]; then
-    echo "Usage: essh <host> -e '<command>'" >&2
+    echo "Usage: essh <host> -e '<command>' [-p password]" >&2
     exit 1
 fi
 
@@ -22,42 +26,89 @@ shift
 
 if [ "$1" != "-e" ]; then
     echo "Error: Expected -e flag" >&2
-    echo "Usage: essh <host> -e '<command>'" >&2
+    echo "Usage: essh <host> -e '<command>' [-p password]" >&2
     exit 1
 fi
 shift
 
-COMMAND="$*"
+# Parse command and optional password
+COMMAND=""
+USE_PASSWORD=""
 
-# Start ssh-agent if not running
-if [ -z "${SSH_AUTH_SOCK:-}" ]; then
-    eval "$(ssh-agent -s)"
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -p)
+            shift
+            USE_PASSWORD="$1"
+            shift
+            ;;
+        *)
+            if [ -z "$COMMAND" ]; then
+                COMMAND="$1"
+            else
+                COMMAND="$COMMAND $1"
+            fi
+            shift
+            ;;
+    esac
+done
+
+# Determine password to use (command line -p flag takes precedence)
+FINAL_PASSWORD=""
+if [ -n "$USE_PASSWORD" ]; then
+    FINAL_PASSWORD="$USE_PASSWORD"
+elif [ -n "${HOST_PASSWORDS[$HOST]:-}" ]; then
+    FINAL_PASSWORD="${HOST_PASSWORDS[$HOST]}"
 fi
 
-# Add SSH key with passphrase using SSH_ASKPASS
-if ! ssh-add -l 2>/dev/null | grep -q "$SSH_KEY"; then
-    # Create a temporary askpass script
-    ASKPASS_SCRIPT=$(mktemp)
-    cat > "$ASKPASS_SCRIPT" << 'ASKPASS_EOF'
+# Check if password authentication is needed
+if [ -n "$FINAL_PASSWORD" ]; then
+    # Check if sshpass is available
+    if command -v sshpass &> /dev/null; then
+        # Set MTU for eth0 (if sudo is available without password)
+        if sudo -n ip link set dev eth0 mtu 1400 2>/dev/null; then
+            :
+        fi
+
+        # Use sshpass for password authentication
+        sshpass -p "$FINAL_PASSWORD" ssh -o StrictHostKeyChecking=no -p "$SSH_PORT" root@$HOST "$COMMAND"
+    else
+        echo "Error: Password authentication requested but sshpass is not installed" >&2
+        echo "Install it with: sudo apt-get install sshpass" >&2
+        echo "Or use SSH key authentication instead" >&2
+        exit 1
+    fi
+else
+    # Start ssh-agent if not running
+    if [ -z "${SSH_AUTH_SOCK:-}" ]; then
+        eval "$(ssh-agent -s)"
+    fi
+
+    # Add SSH key with passphrase using SSH_ASKPASS
+    if ! ssh-add -l 2>/dev/null | grep -q "$SSH_KEY"; then
+        # Create a temporary askpass script
+        ASKPASS_SCRIPT=$(mktemp)
+        cat > "$ASKPASS_SCRIPT" << 'ASKPASS_EOF'
 #!/bin/bash
 echo "20111989"
 ASKPASS_EOF
-    chmod +x "$ASKPASS_SCRIPT"
+        chmod +x "$ASKPASS_SCRIPT"
 
-    # Add the key using SSH_ASKPASS
-    DISPLAY=:0 SSH_ASKPASS="$ASKPASS_SCRIPT" ssh-add "$SSH_KEY" < /dev/null
+        # Add the key using SSH_ASKPASS
+        DISPLAY=:0 SSH_ASKPASS="$ASKPASS_SCRIPT" ssh-add "$SSH_KEY" < /dev/null
 
-    # Clean up
-    rm -f "$ASKPASS_SCRIPT"
+        # Clean up
+        rm -f "$ASKPASS_SCRIPT"
+    fi
+
+    # List added keys
+    ssh-add -l
+
+    # Set MTU for eth0 (if sudo is available without password)
+    if sudo -n ip link set dev eth0 mtu 1400 2>/dev/null; then
+        :
+    fi
+
+    # Execute the command
+    ssh -p "$SSH_PORT" root@$HOST "$COMMAND"
 fi
-
-# List added keys
-ssh-add -l
-
-# Set MTU for eth0 (if sudo is available without password)
-if sudo -n ip link set dev eth0 mtu 1400 2>/dev/null; then
-    :
-fi
-
-# Execute the command
-ssh -p "$SSH_PORT" root@$HOST "$COMMAND"
